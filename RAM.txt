@@ -1,0 +1,72 @@
+  module counter(clk, reset, z);
+  input clk, reset;
+  output[2:0] z;
+  wire w1,w2,w3;
+
+reg [2:0] out;
+
+wire [2:0] out1;
+wire [2:0] qp1;
+
+assign out1 = out;
+always @ (posedge clk) begin
+  if (reset)
+    out <= 3'b000;
+end
+
+D f1 (clk,reset,out1[2],qp1[2]);
+D f2 (clk,reset,out1[1],qp1[1]);
+D f3 (clk,reset,out1[0],qp1[0]);
+
+
+assign z[2] = qp1[2];
+or a1 (w1, qp1[2], out1[0]);
+and a2 (w2, out1[2], out1[1], qp1[0]);
+and a3 (w3, w1, qp1[1]);
+or a4 (z[1], w2,w3);
+xnor a5(z[0], out1[2], out1[0]);
+
+endmodule
+
+
+module testbench ();
+  reg clk, reset;
+  wire [2:0] z;
+  
+counter test (clk, reset, z);
+
+initial begin
+  clk = 1'b0;
+  reset = 1'b0;
+end
+
+
+always #10 clk = ~clk;
+
+initial begin
+  #10 reset = 1;
+  #500 $finish;
+end
+endmodule
+
+module D(clk,D,Q,QP);
+  input clk,D;
+  output Q,QP;
+  reg out;
+  
+  initial begin 
+  out = 1'b0;
+  end
+  
+  always@(posedge clk) 
+    begin
+    out = D;
+  end
+  
+  assign  Q  = out;
+  assign QP = ~out;
+   
+  endmodule
+  
+  
+

@@ -1,0 +1,242 @@
+module AA_CPU(clk,PORT,INPUT,BYPASS,BYPASS_IN,ENTER);
+input clk,BYPASS,ENTER;
+input [7:0] BYPASS_IN;
+input [3:0] INPUT;
+output [7:0] PORT;
+
+
+
+wire [7:0] ALU_OUT,DATA,Instruction;
+reg [3:0] counter,EN;
+reg [7:0]  OUT, RAM_IN,ALU_IN,W,A,B;
+reg [3:0] DATA_IN,control;
+reg OE,CS,WE,ZF,GF,LF,EF,OEb,CSb,WEb,RST,ALU;
+
+// register A is for ALU A input and then same for B is for ALU B input
+
+initial begin counter = 0; EN = 0; //COUNTER
+              OEb = 0; CSb = 0; WEb = 0; // Controls for Instruction Ram
+              OEb = 0; CSb = 0; WEb = 0; // Controls for Data Ram
+              control = 5;
+              ZF = 0; GF = 0; LF=0; EF=0; // Flags
+				  RST =0; // Checks if Bypass was Enabled
+				  ALU = 0; // Checks of ALU was Used
+				  W= 0; // WOrking Register
+				  OUT= 0; //HOLDER for Working Register W
+end
+
+
+
+assign PORT = W;
+
+RAM instructions(CSb, WEb, OEb, counter, BYPASS_IN, Instruction);
+RAM data(CS, WE, OE, Instruction [3:0], RAM_IN, DATA);
+
+ALU alu (A,B, ALU_OUT,control);
+
+
+always @ ( negedge ENTER) begin //COUNTER for Bypass
+if (BYPASS == 1) begin
+    EN = EN + 1; 
+	 end
+	 else EN = 0;
+end
+
+always @(posedge clk) begin
+
+	if(BYPASS == 0) begin 
+	CSb = 1; WEb = 0; OEb = 1;
+	CS = 1; WE = 0; OE = 1;
+	#10 if (RST == 0) begin counter = 0; end // CHECKS if Bypass was Enabled
+	DATA_IN = INPUT;
+	RST = 1;
+	
+	if (ALU == 1) begin #10 OUT = ALU_OUT; end //Checks if ALU was Used
+	
+  case (Instruction [7:4])
+	 0: ALU = 0;//DO NOTHING ;
+	 
+	 // READ RAM
+    1: begin CS = 1; WE = 0; OE = 1; 
+        OUT = DATA; 
+       end
+		 
+		 //SAVE to RAM
+    2: begin RAM_IN = OUT; #1 CS = 1; WE = 1; OE = 0;   ALU = 0;
+        end 
+		  
+		  // W = INPUT
+    3: begin OUT = DATA_IN; ALU = 0;end 
+	 
+	 //COMPARE
+    4: begin 								
+             control = 4;
+				  #10 ALU_IN = DATA_IN;
+				  #10 B = ALU_IN;
+				  #10 A =OUT;
+				  ALU = 1;
+             if (ALU_OUT[3:0] == 4'b0000) begin  ZF = 1; EF = 0; end
+             else if (ALU_OUT[3:0] == 4'b1111) begin EF = 1; ZF = 0; end
+       end
+		 
+		 //SKIP ZF / EF
+    5: begin	
+			ALU = 0;
+         if (ZF == 1 && EF == 0) begin  counter = counter+1; end
+         else if (ZF == 0 && EF == 1) begin  counter = counter+1; end
+       end
+		 
+		 //SKIP GF/LF
+    6: begin		
+			ALU = 0;
+      if (Instruction [0] == 1) begin 
+         if (GF == 1 && LF == 0) begin  counter = counter+1; end
+      end
+      
+      else if (Instruction [0] == 0) begin 
+          if (GF == 0 && LF == 1) begin  counter = counter+1; end
+      end
+       end
+		 
+		 // LOOP to ADDRESS
+    7: begin counter = Instruction [3:0]; ALU = 0; end
+	 
+	 //ADD IPUT to W
+    8:  begin 				
+              control = 0;
+				  #10 ALU_IN = DATA_IN;
+              #10 B = ALU_IN;
+				  #10 A = OUT;
+					ALU = 1;
+              
+       end
+		 
+		 //ADD RAM to W
+    9: begin				
+              
+              control = 0;
+				  #10 ALU_IN = DATA;
+             #10 B = ALU_IN;
+				  #10 A =OUT;	
+				  ALU = 1;
+              
+       end
+		 
+		 //SUB INPUT to W
+    10: begin 				
+              control = 1;
+				  #10 ALU_IN = DATA_IN;
+             #10 B = ALU_IN;
+				 #10 A =OUT;
+				 ALU = 1;
+             
+       end
+		 
+		 // SUB RAM to W
+    11: begin CS = 1; WE = 0; OE = 1;  
+              
+              control = 1;
+				 #10 ALU_IN = DATA;
+              #10 B = ALU_IN;
+				  #10 A =OUT;
+				  ALU = 1;
+             
+       end
+		 
+		 //AND
+    12: begin 					
+              control = 4;
+				   #10 ALU_IN = DATA_IN;
+					#10 B = ALU_IN;
+					#10 A =OUT;
+					ALU = 1;
+              
+       end
+		 
+		 //OR
+    13: begin 					
+              control = 3;
+				   #10 ALU_IN = DATA_IN;
+					#10 B = ALU_IN;
+					#10 A =OUT;
+					ALU = 1;
+              
+       end
+		 
+		 //NOT
+    14: begin  control = 2; #10 A =OUT;  ALU = 1; end  
+	 
+	 // SHOW to PORT
+    15:  begin W = OUT; ALU = 0; end
+	 default begin ALU = 0; end //DO NOTHING 
+  endcase 
+   if (counter < 15) begin counter = counter+1; end
+end
+
+
+else begin CSb = 1; WEb = 1; OEb = 0; counter = EN; RST = 0;end
+end
+
+
+endmodule
+
+
+////============ ALU ============ ////
+
+module ALU (A,B,OUT,control);
+ input [7:0] A,B;
+ input [2:0] control;
+ output [7:0] OUT;
+ reg [7:0] hold;
+ 
+ always @(A,B,control)begin
+  hold = 0; 
+ case (control)
+ 0: hold = A+B;
+ 1: begin
+ if (B > A || A == 0)begin
+ hold = 0; end
+ else begin hold = A-B; end
+ end
+ 2: hold = ~A; 
+ 3: hold = A|B;
+ 4: hold = A&B;
+default : ;
+endcase
+ end
+ assign OUT = hold;
+ 
+endmodule 
+
+////============ RAM ============ ////
+
+module RAM(CS, WE, RE, Address, IN, OUT);
+  input CS,WE,RE;
+  input [3:0] Address;
+  input [7:0] IN;
+  output [7:0] OUT;
+  
+  reg [7:0]RAM[0:15];
+  reg [7:0] DIN, DOUT;
+  
+  assign OUT = DOUT;
+  
+   always @(WE,Address) begin // IF WE IS 1 WRITES DATA TO RAM LOCATION
+  DIN = 0;
+	if (WE == 1) begin
+        DIN = IN;
+        if (CS==1'b1&& RE==0) begin // CS SHOULD BE ALWAYS 1 IF 0 CHIP TURNS OFF
+          RAM[Address] = DIN; // STORES DATA ON RAM
+      end
+      end
+		end
+      
+  always @(RE,Address) begin // ANY CHANGES ON BOTH WILL CHECK CONDITIONS BELOW
+        if (CS==1'b1 && RE==1 && WE == 0) begin // IF TRUE READS DATA on RAM ADDRESS GIVEN
+         DOUT = RAM[Address]; 
+      end
+      else  DOUT =  4'bzzzz ; //  SETS OUTPUT IN IDLE / WAITING STATE
+      end
+        
+      
+endmodule 

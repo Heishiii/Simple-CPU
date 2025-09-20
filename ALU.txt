@@ -1,0 +1,47 @@
+module ALU (A,B,OUT,control);
+ input [1:0] A,B;
+ input [2:0] control;
+ output [3:0] OUT;
+ reg [1:0] INI;
+ reg [3:0] hold;
+ 
+ integer i;
+ 
+ always @(A,B,control)begin
+  hold = 0; 
+ case (control)
+ 0: hold = A+B;
+ 1: begin
+ if (B > A)begin
+ hold = 0; end
+ else begin hold = A-B; end
+ end
+ 2: begin
+   INI = A; 
+ for (i = 0; i<B; i = i + 1) begin 
+ hold = hold + INI; 
+ end
+ end 
+ 3: begin
+ hold = 0;
+ if (A > 0) begin INI = A; end
+ if(A == 0) begin hold = 0; end
+ else begin
+ for (i = 0; i < 4; i = i + 1) begin 
+ if (INI >= B) begin 
+ INI = INI - B;
+ hold = hold+1; end end
+ end
+ 
+ 
+ end
+  
+ 4: hold = ~A; 
+ 5: hold = A|B;
+ 6: hold = A&B;
+ 7: hold = A^B;
+endcase
+ end
+ assign OUT = hold;
+ 
+endmodule
